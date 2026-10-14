@@ -1,0 +1,6 @@
+{
+  "name": "SSO Central",
+  "description": "A central portal for managing SSO domain registrations, SAML 2.0 metadata federation, migrations, Traiana legacy OTP skip counters & email verification, audit history, SSO API health monitoring, and external application client secret expiry lifecycle.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@300;400;600;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #008744;
+  --color-accent: #FF0061;
+  --color-sidebar-bg: #333333;
+  --color-sidebar-active: #ffffff;
+  --color-sidebar-inactive-text: #bdbdbd;
+  --color-main-bg: #f6f6f6;
+  --color-card-bg: #ffffff;
+  --color-text-dark: #333333;
+  --color-table-header-bg: #e6e6e6;
+  --color-enabled-bg: #e5f5e5;
+  --color-enabled-text: #228b22;
+
+  --font-libre: "Libre Franklin", sans-serif;
+}
+
+@layer base {
+  body {
+    @apply font-libre bg-[var(--color-main-bg)] text-[var(--color-text-dark)];
+  }
+}
+
+@layer components {
+  .sidebar-link {
+    @apply flex items-center p-3 rounded-lg text-[var(--color-sidebar-inactive-text)] transition-colors border-l-4 border-transparent hover:text-[var(--color-sidebar-active)] hover:bg-white/10;
+  }
+  .sidebar-link.active {
+    @apply text-[var(--color-sidebar-active)] bg-white/5 border-l-[var(--color-accent)] font-semibold;
+  }
+  .accent-button {
+    @apply bg-[var(--color-primary)] text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center shadow-md transition-colors hover:bg-[#006432];
+  }
+  .form-input-light {
+    @apply bg-[#f9f9f9] border border-[#dcdcdc] text-[var(--color-text-dark)] p-3 rounded-lg transition-all focus:border-[var(--color-accent)] focus:ring-1 focus:ring-[var(--color-accent)] outline-none;
+  }
+  .read-only-input {
+    @apply bg-[#eeeeee] text-[#777] cursor-not-allowed;
+  }
+  .status-badge {
+    @apply text-[xs] font-semibold px-3 py-1 rounded capitalize;
+  }
+  .status-enabled {
+    @apply bg-[var(--color-enabled-bg)] text-[var(--color-enabled-text)];
+  }
+  .status-disabled {
+    @apply bg-[#f1f1f1] text-[#777];
+  }
+  .status-pending {
+    @apply bg-[#fff8e1] text-[#ff8f00];
+  }
+  .blotter-filter-input {
+    @apply bg-white border border-[#ccc] text-[var(--color-text-dark)] px-2 py-1 w-full text-sm rounded-sm outline-none focus:border-[var(--color-accent)];
+  }
+}
