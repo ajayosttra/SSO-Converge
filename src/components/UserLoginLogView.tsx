@@ -3,7 +3,6 @@ import {
   Search, 
   RotateCcw, 
   Download, 
-  LogIn, 
   Clock, 
   User, 
   ChevronLeft, 
@@ -15,11 +14,10 @@ import {
 } from 'lucide-react';
 import { SsoUserLoginRecord, SsoAuthProtocol } from '../types';
 import { SsoLoginDetailModal } from './SsoLoginDetailModal';
-import { SimulateSsoLoginModal } from './SimulateSsoLoginModal';
 
 interface UserLoginLogViewProps {
   loginRecords: SsoUserLoginRecord[];
-  onRecordLogin: (data: {
+  onRecordLogin?: (data: {
     email: string;
     applicationName: string;
     environment: 'PROD' | 'UAT';
@@ -42,7 +40,6 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
   const [currentPage, setCurrentPage] = useState<number>(1);
 
   // Modals state
-  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
   const [selectedRecordForDetail, setSelectedRecordForDetail] = useState<SsoUserLoginRecord | null>(null);
 
   // Extract each user's latest login record per application & environment
@@ -64,15 +61,6 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
     const set = new Set<string>();
     loginRecords.forEach(r => set.add(r.applicationName));
     return Array.from(set).sort();
-  }, [loginRecords]);
-
-  // Known users for quick picking in simulator modal
-  const knownUsers = useMemo(() => {
-    const map = new Map<string, string>();
-    loginRecords.forEach(r => {
-      if (!map.has(r.email)) map.set(r.email, r.domain);
-    });
-    return Array.from(map.entries()).map(([email, domain]) => ({ email, domain }));
   }, [loginRecords]);
 
   // Reset filters
@@ -176,13 +164,6 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
           </div>
 
           <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setIsSimulatorOpen(true)}
-              className="accent-button text-xs py-2 px-3.5 shadow-sm hover:shadow flex items-center cursor-pointer"
-            >
-              <LogIn size={15} className="mr-1.5" />
-              Simulate SSO Login
-            </button>
             <button
               onClick={handleExportCSV}
               className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center shadow-xs transition-colors cursor-pointer"
@@ -346,7 +327,7 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
                     <td colSpan={8} className="text-center py-12 text-gray-400">
                       <Clock size={36} className="mx-auto mb-2 text-gray-300" />
                       <p className="font-semibold text-gray-600">No user last login records found</p>
-                      <p className="text-[11px] text-gray-400 mt-1">Try adjusting your filters or click "Simulate SSO Login" to record a login event.</p>
+                      <p className="text-[11px] text-gray-400 mt-1">Try adjusting your search query or filters.</p>
                     </td>
                   </tr>
                 ) : (
@@ -506,14 +487,6 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
         </div>
 
       </div>
-
-      {/* Simulator Modal */}
-      <SimulateSsoLoginModal
-        isOpen={isSimulatorOpen}
-        onClose={() => setIsSimulatorOpen(false)}
-        onRecordLogin={onRecordLogin}
-        knownUsers={knownUsers}
-      />
 
       {/* Detail Modal */}
       <SsoLoginDetailModal
