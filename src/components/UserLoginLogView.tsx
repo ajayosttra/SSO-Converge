@@ -4,24 +4,16 @@ import {
   RotateCcw, 
   Download, 
   LogIn, 
-  ShieldCheck, 
-  Server, 
   Clock, 
   User, 
-  Globe, 
   ChevronLeft, 
   ChevronRight, 
-  SlidersHorizontal, 
-  FileSpreadsheet, 
-  Layers, 
   CheckCircle2, 
-  AlertCircle,
-  Eye,
+  Eye, 
   Activity,
-  Calendar
+  Server
 } from 'lucide-react';
-import { SsoUserLoginRecord, UserAppLoginSummary, SsoAuthProtocol } from '../types';
-import { KNOWN_APPLICATIONS, getUserAppLoginSummaries } from '../data/userLoginData';
+import { SsoUserLoginRecord, SsoAuthProtocol } from '../types';
 import { SsoLoginDetailModal } from './SsoLoginDetailModal';
 import { SimulateSsoLoginModal } from './SimulateSsoLoginModal';
 
@@ -43,11 +35,9 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
   onRecordLogin,
   onNavigateHome
 }) => {
-  const [activeTab, setActiveTab] = useState<'events' | 'summary'>('events');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedApp, setSelectedApp] = useState<string>('ALL');
   const [selectedEnv, setSelectedEnv] = useState<string>('ALL');
-  const [selectedProtocol, setSelectedProtocol] = useState<string>('ALL');
   const [rowsPerPage, setRowsPerPage] = useState<number>(25);
   const [currentPage, setCurrentPage] = useState<number>(1);
 
@@ -55,25 +45,28 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
   const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
   const [selectedRecordForDetail, setSelectedRecordForDetail] = useState<SsoUserLoginRecord | null>(null);
 
-  // Derived summaries
-  const userSummaries = useMemo(() => {
-    return getUserAppLoginSummaries(loginRecords);
+  // Extract each user's latest login record per application & environment
+  const userLastLoginRecords = useMemo(() => {
+    const map = new Map<string, SsoUserLoginRecord>();
+    // Sort descending by timestamp so first occurrence is the latest login
+    const sorted = [...loginRecords].sort((a, b) => b.rawTimestamp - a.rawTimestamp);
+    for (const rec of sorted) {
+      const key = `${rec.email.toLowerCase()}::${rec.applicationName}::${rec.environment}`;
+      if (!map.has(key)) {
+        map.set(key, rec);
+      }
+    }
+    return Array.from(map.values());
   }, [loginRecords]);
 
-  // Extract unique applications and protocols present in data
+  // Extract unique applications present in data
   const availableApps = useMemo(() => {
     const set = new Set<string>();
     loginRecords.forEach(r => set.add(r.applicationName));
     return Array.from(set).sort();
   }, [loginRecords]);
 
-  const availableProtocols = useMemo(() => {
-    const set = new Set<string>();
-    loginRecords.forEach(r => set.add(r.protocol));
-    return Array.from(set).sort();
-  }, [loginRecords]);
-
-  // Known users for quick picking in modal
+  // Known users for quick picking in simulator modal
   const knownUsers = useMemo(() => {
     const map = new Map<string, string>();
     loginRecords.forEach(r => {
@@ -87,13 +80,12 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
     setSearchQuery('');
     setSelectedApp('ALL');
     setSelectedEnv('ALL');
-    setSelectedProtocol('ALL');
     setCurrentPage(1);
   };
 
-  // Filtered Events
-  const filteredEvents = useMemo(() => {
-    return loginRecords.filter(record => {
+  // Filtered Last Login Records
+  const filteredRecords = useMemo(() => {
+    return userLastLoginRecords.filter(record => {
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch = 
         !q ||
@@ -107,76 +99,44 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
 
       const matchesApp = selectedApp === 'ALL' || record.applicationName === selectedApp;
       const matchesEnv = selectedEnv === 'ALL' || record.environment === selectedEnv;
-      const matchesProtocol = selectedProtocol === 'ALL' || record.protocol === selectedProtocol;
 
-      return matchesSearch && matchesApp && matchesEnv && matchesProtocol;
+      return matchesSearch && matchesApp && matchesEnv;
     });
-  }, [loginRecords, searchQuery, selectedApp, selectedEnv, selectedProtocol]);
+  }, [userLastLoginRecords, searchQuery, selectedApp, selectedEnv]);
 
-  // Filtered Summaries
-  const filteredSummaries = useMemo(() => {
-    return userSummaries.filter(summary => {
-      const q = searchQuery.toLowerCase().trim();
-      const matchesSearch = 
-        !q ||
-        summary.email.toLowerCase().includes(q) ||
-        summary.applicationName.toLowerCase().includes(q) ||
-        summary.domain.toLowerCase().includes(q) ||
-        (summary.displayName && summary.displayName.toLowerCase().includes(q)) ||
-        summary.lastLoginTimestamp.toLowerCase().includes(q) ||
-        summary.lastClientIp.toLowerCase().includes(q);
-
-      const matchesApp = selectedApp === 'ALL' || summary.applicationName === selectedApp;
-      const matchesEnv = selectedEnv === 'ALL' || summary.environment === selectedEnv;
-      const matchesProtocol = selectedProtocol === 'ALL' || summary.lastProtocol === selectedProtocol;
-
-      return matchesSearch && matchesApp && matchesEnv && matchesProtocol;
-    });
-  }, [userSummaries, searchQuery, selectedApp, selectedEnv, selectedProtocol]);
-
-  // Active records based on tab
-  const activeRecords = activeTab === 'events' ? filteredEvents : filteredSummaries;
-  const totalRecords = activeRecords.length;
+  // Pagination
+  const totalRecords = filteredRecords.length;
   const totalPages = Math.max(1, Math.ceil(totalRecords / rowsPerPage));
-
   const paginatedRecords = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
-    return activeRecords.slice(start, start + rowsPerPage);
-  }, [activeRecords, currentPage, rowsPerPage]);
+    return filteredRecords.slice(start, start + rowsPerPage);
+  }, [filteredRecords, currentPage, rowsPerPage]);
 
-  // Quick Stats
+  // Quick Stats based on user last login records
   const stats = useMemo(() => {
-    const uniqueUsers = new Set(loginRecords.map(r => r.email.toLowerCase())).size;
-    const prodCount = loginRecords.filter(r => r.environment === 'PROD').length;
-    const uatCount = loginRecords.filter(r => r.environment === 'UAT').length;
+    const uniqueUsers = new Set(userLastLoginRecords.map(r => r.email.toLowerCase())).size;
+    const prodCount = userLastLoginRecords.filter(r => r.environment === 'PROD').length;
+    const uatCount = userLastLoginRecords.filter(r => r.environment === 'UAT').length;
     return {
-      total: loginRecords.length,
+      total: userLastLoginRecords.length,
       users: uniqueUsers,
       prod: prodCount,
       uat: uatCount
     };
-  }, [loginRecords]);
+  }, [userLastLoginRecords]);
 
   // Export to CSV
   const handleExportCSV = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
-    
-    if (activeTab === 'events') {
-      csvContent += "Event ID,User Email ID,User Name,Domain,Application Name,Environment,Last Login Timestamp,SSO Protocol,Status,Source IP,Location,Session ID\n";
-      filteredEvents.forEach(r => {
-        csvContent += `"${r.id}","${r.email}","${r.displayName || ''}","${r.domain}","${r.applicationName}","${r.environment}","${r.lastLoginTimestamp}","${r.protocol}","${r.status}","${r.clientIp}","${r.location}","${r.sessionId}"\n`;
-      });
-    } else {
-      csvContent += "User Email ID,User Name,Domain,Application Name,Environment,Last Login Timestamp,Total Recorded Logins,Last Source IP,Last Protocol\n";
-      filteredSummaries.forEach(s => {
-        csvContent += `"${s.email}","${s.displayName}","${s.domain}","${s.applicationName}","${s.environment}","${s.lastLoginTimestamp}","${s.totalLogins}","${s.lastClientIp}","${s.lastProtocol}"\n`;
-      });
-    }
+    csvContent += "User Email ID,User Name,Domain,Application Name,Environment,Last Login Timestamp,SSO Protocol,Status,Source IP,Location,Session ID\n";
+    filteredRecords.forEach(r => {
+      csvContent += `"${r.email}","${r.displayName || ''}","${r.domain}","${r.applicationName}","${r.environment}","${r.lastLoginTimestamp}","${r.protocol}","${r.status}","${r.clientIp}","${r.location}","${r.sessionId}"\n`;
+    });
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `sso_user_login_${activeTab}_${Date.now()}.csv`);
+    link.setAttribute("download", `sso_user_last_login_log_${Date.now()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -197,21 +157,21 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
           <div>
             <div className="flex items-center space-x-2 text-xs text-gray-500 mb-1">
               {onNavigateHome && (
-                <button onClick={onNavigateHome} className="hover:text-gray-800 transition-colors">
+                <button onClick={onNavigateHome} className="hover:text-gray-800 transition-colors cursor-pointer">
                   Home
                 </button>
               )}
               {onNavigateHome && <span>/</span>}
               <span className="font-semibold text-gray-700">Audit &amp; Telemetry</span>
               <span>/</span>
-              <span className="text-[var(--color-primary)] font-bold">User SSO Last Login Activity</span>
+              <span className="text-[var(--color-primary)] font-bold">User Login Log</span>
             </div>
             <h1 className="text-xl font-extrabold text-gray-900 tracking-tight flex items-center">
-              <LogIn className="mr-2 text-[var(--color-primary)]" size={24} />
-              User SSO Login Activity &amp; Last Login Log
+              <Clock className="mr-2 text-[var(--color-primary)]" size={24} />
+              User Last Login Blotter
             </h1>
             <p className="text-xs text-gray-500 mt-1">
-              Real-time audit log recording any user authentication to any application via SSO with User Email, Application, Environment, and Last Login Timestamp.
+              Consolidated view of each user's latest recorded SSO authentication timestamp across all applications and environments.
             </p>
           </div>
 
@@ -225,7 +185,7 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
             </button>
             <button
               onClick={handleExportCSV}
-              className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center shadow-xs transition-colors"
+              className="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center shadow-xs transition-colors cursor-pointer"
             >
               <Download size={15} className="mr-1.5 text-gray-500" />
               Export CSV
@@ -237,7 +197,7 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">Total Logins Recorded</span>
+              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">Total Last Login Records</span>
               <span className="text-2xl font-black text-gray-900">{stats.total}</span>
             </div>
             <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
@@ -257,7 +217,7 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
 
           <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">PROD Logins</span>
+              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">PROD Entitlements</span>
               <span className="text-2xl font-black text-emerald-700">{stats.prod}</span>
             </div>
             <div className="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
@@ -267,7 +227,7 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
 
           <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">UAT Logins</span>
+              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">UAT Entitlements</span>
               <span className="text-2xl font-black text-amber-700">{stats.uat}</span>
             </div>
             <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-xs">
@@ -276,40 +236,8 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
           </div>
         </div>
 
-        {/* Tab Selection */}
-        <div className="flex border-b border-gray-200 bg-white px-4 rounded-t-xl">
-          <button
-            onClick={() => {
-              setActiveTab('events');
-              setCurrentPage(1);
-            }}
-            className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center transition-colors cursor-pointer ${
-              activeTab === 'events'
-                ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Clock size={15} className="mr-2" />
-            All SSO Login Events Log ({filteredEvents.length})
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('summary');
-              setCurrentPage(1);
-            }}
-            className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center transition-colors cursor-pointer ${
-              activeTab === 'summary'
-                ? 'border-[var(--color-accent)] text-[var(--color-accent)]'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Layers size={15} className="mr-2" />
-            User Last Login Summary by Application ({filteredSummaries.length})
-          </button>
-        </div>
-
         {/* Filter Controls Bar */}
-        <div className="bg-white p-4 rounded-b-xl border border-t-0 border-gray-200 shadow-xs space-y-3">
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
             {/* Search Input */}
             <div className="md:col-span-5 relative">
@@ -363,7 +291,7 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
             <div className="md:col-span-2 flex justify-end">
               <button
                 onClick={handleResetFilters}
-                className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 px-3 py-2 rounded-lg flex items-center w-full justify-center hover:bg-gray-50 transition-colors"
+                className="text-xs text-gray-600 hover:text-gray-900 border border-gray-300 px-3 py-2 rounded-lg flex items-center w-full justify-center hover:bg-gray-50 transition-colors cursor-pointer"
               >
                 <RotateCcw size={12} className="mr-1.5" />
                 Reset Filters
@@ -396,7 +324,7 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
           )}
         </div>
 
-        {/* Data Table */}
+        {/* Single Unified Data Table with User Last Login Records */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
@@ -416,211 +344,105 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
                 {paginatedRecords.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="text-center py-12 text-gray-400">
-                      <LogIn size={36} className="mx-auto mb-2 text-gray-300" />
-                      <p className="font-semibold text-gray-600">No SSO login activity found</p>
-                      <p className="text-[11px] text-gray-400 mt-1">Try adjusting your search filters or click "Simulate SSO Login" to record an entry.</p>
+                      <Clock size={36} className="mx-auto mb-2 text-gray-300" />
+                      <p className="font-semibold text-gray-600">No user last login records found</p>
+                      <p className="text-[11px] text-gray-400 mt-1">Try adjusting your filters or click "Simulate SSO Login" to record a login event.</p>
                     </td>
                   </tr>
                 ) : (
-                  activeTab === 'events' ? (
-                    (paginatedRecords as SsoUserLoginRecord[]).map(record => (
-                      <tr 
-                        key={record.id} 
-                        className="hover:bg-blue-50/40 transition-colors group cursor-pointer"
-                        onClick={() => setSelectedRecordForDetail(record)}
-                      >
-                        {/* User Email ID */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center space-x-2.5">
-                            <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-300 flex items-center justify-center text-[10px] font-bold text-gray-700 shrink-0 uppercase">
-                              {record.email.substring(0, 2)}
-                            </div>
-                            <div className="truncate max-w-[220px]">
-                              <span className="font-bold text-gray-900 block truncate" title={record.email}>
-                                {record.email}
-                              </span>
-                              <span className="text-[10px] text-gray-500 font-mono">
-                                {record.domain}
-                              </span>
-                            </div>
+                  paginatedRecords.map(record => (
+                    <tr 
+                      key={`${record.email}-${record.applicationName}-${record.environment}`}
+                      className="hover:bg-blue-50/40 transition-colors group cursor-pointer"
+                      onClick={() => setSelectedRecordForDetail(record)}
+                    >
+                      {/* User Email ID */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center space-x-2.5">
+                          <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-300 flex items-center justify-center text-[10px] font-bold text-gray-700 shrink-0 uppercase">
+                            {record.email.substring(0, 2)}
                           </div>
-                        </td>
-
-                        {/* Application Name */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center space-x-1.5">
-                            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>
-                            <span className="font-extrabold text-blue-900">
-                              {record.applicationName}
+                          <div className="truncate max-w-[220px]">
+                            <span className="font-bold text-gray-900 block truncate" title={record.email}>
+                              {record.email}
+                            </span>
+                            <span className="text-[10px] text-gray-500 font-mono">
+                              {record.displayName ? `${record.displayName} • ` : ''}{record.domain}
                             </span>
                           </div>
-                        </td>
+                        </div>
+                      </td>
 
-                        {/* Environment */}
-                        <td className="px-4 py-3 text-center">
-                          <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                            record.environment === 'PROD'
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : 'bg-amber-100 text-amber-800 border border-amber-300'
-                          }`}>
-                            {record.environment}
+                      {/* Application Name */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>
+                          <span className="font-extrabold text-blue-900">
+                            {record.applicationName}
                           </span>
-                        </td>
+                        </div>
+                      </td>
 
-                        {/* Last Login Timestamp */}
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex items-center space-x-1.5">
-                            <Clock size={13} className="text-emerald-600 shrink-0" />
-                            <span className="font-bold text-gray-900 font-mono text-xs">
-                              {record.lastLoginTimestamp}
-                            </span>
-                          </div>
-                        </td>
+                      {/* Environment */}
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                          record.environment === 'PROD'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : 'bg-amber-100 text-amber-800 border border-amber-300'
+                        }`}>
+                          {record.environment}
+                        </span>
+                      </td>
 
-                        {/* SSO Protocol */}
-                        <td className="px-4 py-3 text-gray-700">
-                          <span className="inline-block px-2 py-0.5 rounded bg-gray-100 text-gray-700 font-medium text-[11px]">
-                            {record.protocol}
+                      {/* Last Login Timestamp */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center space-x-1.5">
+                          <Clock size={13} className="text-emerald-600 shrink-0" />
+                          <span className="font-bold text-gray-900 font-mono text-xs">
+                            {record.lastLoginTimestamp}
                           </span>
-                        </td>
+                        </div>
+                      </td>
 
-                        {/* Source IP & Location */}
-                        <td className="px-4 py-3 text-gray-600 text-[11px]">
-                          <span className="font-mono text-gray-800 block">{record.clientIp}</span>
-                          <span className="text-gray-400 truncate block max-w-[150px]" title={record.location}>
-                            {record.location}
-                          </span>
-                        </td>
+                      {/* SSO Protocol */}
+                      <td className="px-4 py-3 text-gray-700">
+                        <span className="inline-block px-2 py-0.5 rounded bg-gray-100 text-gray-700 font-medium text-[11px]">
+                          {record.protocol}
+                        </span>
+                      </td>
 
-                        {/* Status */}
-                        <td className="px-4 py-3 text-center">
-                          <span className="inline-flex items-center text-emerald-700 font-semibold text-[11px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                            <CheckCircle2 size={11} className="mr-1 text-emerald-600" />
-                            {record.status}
-                          </span>
-                        </td>
+                      {/* Source IP & Location */}
+                      <td className="px-4 py-3 text-gray-600 text-[11px]">
+                        <span className="font-mono text-gray-800 block">{record.clientIp}</span>
+                        <span className="text-gray-400 truncate block max-w-[150px]" title={record.location}>
+                          {record.location}
+                        </span>
+                      </td>
 
-                        {/* Action */}
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedRecordForDetail(record);
-                            }}
-                            className="text-xs text-[var(--color-primary)] font-bold hover:underline inline-flex items-center cursor-pointer"
-                          >
-                            <Eye size={12} className="mr-1" />
-                            Details
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    (paginatedRecords as UserAppLoginSummary[]).map(summary => (
-                      <tr 
-                        key={`${summary.email}::${summary.applicationName}::${summary.environment}`}
-                        className="hover:bg-blue-50/40 transition-colors group cursor-pointer"
-                        onClick={() => {
-                          const matchedRecord = loginRecords.find(r => 
-                            r.email.toLowerCase() === summary.email.toLowerCase() && 
-                            r.applicationName === summary.applicationName && 
-                            r.environment === summary.environment
-                          );
-                          if (matchedRecord) setSelectedRecordForDetail(matchedRecord);
-                        }}
-                      >
-                        {/* User Email ID */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center space-x-2.5">
-                            <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-300 flex items-center justify-center text-[10px] font-bold text-gray-700 shrink-0 uppercase">
-                              {summary.email.substring(0, 2)}
-                            </div>
-                            <div className="truncate max-w-[220px]">
-                              <span className="font-bold text-gray-900 block truncate" title={summary.email}>
-                                {summary.email}
-                              </span>
-                              <span className="text-[10px] text-gray-500">
-                                {summary.displayName} ({summary.domain})
-                              </span>
-                            </div>
-                          </div>
-                        </td>
+                      {/* Status */}
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-flex items-center text-emerald-700 font-semibold text-[11px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          <CheckCircle2 size={11} className="mr-1 text-emerald-600" />
+                          {record.status}
+                        </span>
+                      </td>
 
-                        {/* Application Name */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center space-x-1.5">
-                            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>
-                            <span className="font-extrabold text-blue-900">
-                              {summary.applicationName}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Environment */}
-                        <td className="px-4 py-3 text-center">
-                          <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                            summary.environment === 'PROD'
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : 'bg-amber-100 text-amber-800 border border-amber-300'
-                          }`}>
-                            {summary.environment}
-                          </span>
-                        </td>
-
-                        {/* Last Login Timestamp */}
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex items-center space-x-1.5">
-                            <Clock size={13} className="text-emerald-600 shrink-0" />
-                            <span className="font-black text-gray-900 font-mono text-xs">
-                              {summary.lastLoginTimestamp}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* SSO Protocol */}
-                        <td className="px-4 py-3 text-gray-700">
-                          <span className="inline-block px-2 py-0.5 rounded bg-gray-100 text-gray-700 font-medium text-[11px]">
-                            {summary.lastProtocol}
-                          </span>
-                        </td>
-
-                        {/* Source IP */}
-                        <td className="px-4 py-3 text-gray-600 text-[11px]">
-                          <span className="font-mono text-gray-800">{summary.lastClientIp}</span>
-                          <span className="text-gray-400 block text-[10px]">{summary.totalLogins} session{summary.totalLogins > 1 ? 's' : ''} recorded</span>
-                        </td>
-
-                        {/* Status */}
-                        <td className="px-4 py-3 text-center">
-                          <span className="inline-flex items-center text-emerald-700 font-semibold text-[11px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                            <CheckCircle2 size={11} className="mr-1 text-emerald-600" />
-                            {summary.lastStatus}
-                          </span>
-                        </td>
-
-                        {/* Action */}
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const matchedRecord = loginRecords.find(r => 
-                                r.email.toLowerCase() === summary.email.toLowerCase() && 
-                                r.applicationName === summary.applicationName && 
-                                r.environment === summary.environment
-                              );
-                              if (matchedRecord) setSelectedRecordForDetail(matchedRecord);
-                            }}
-                            className="text-xs text-[var(--color-primary)] font-bold hover:underline inline-flex items-center cursor-pointer"
-                          >
-                            <Eye size={12} className="mr-1" />
-                            Details
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )
+                      {/* Actions */}
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedRecordForDetail(record);
+                          }}
+                          className="text-xs text-[var(--color-primary)] font-bold hover:underline inline-flex items-center cursor-pointer"
+                        >
+                          <Eye size={12} className="mr-1" />
+                          Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
@@ -664,7 +486,7 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                   disabled={currentPage === 1}
-                  className="p-1 rounded border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="p-1 rounded border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <ChevronLeft size={16} />
                 </button>
@@ -674,7 +496,7 @@ export const UserLoginLogView: React.FC<UserLoginLogViewProps> = ({
                 <button
                   onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                   disabled={currentPage >= totalPages}
-                  className="p-1 rounded border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="p-1 rounded border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <ChevronRight size={16} />
                 </button>
