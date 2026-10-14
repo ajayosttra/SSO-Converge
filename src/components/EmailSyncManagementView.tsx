@@ -146,11 +146,11 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
               {onNavigateHome && <span>/</span>}
               <span className="font-semibold text-gray-700">User Identity Lifecycle</span>
               <span>/</span>
-              <span className="text-[var(--color-primary)] font-bold">Email Propagation &amp; Sync</span>
+              <span className="text-[var(--color-primary)] font-bold">Email Update Status</span>
             </div>
             <h1 className="text-xl font-extrabold text-gray-900 tracking-tight flex items-center">
               <Mail className="mr-2 text-[var(--color-primary)]" size={24} />
-              Cross-Application User Email Propagation Hub
+              User Email Update Status &amp; Downstream Propagation
             </h1>
             <p className="text-xs text-gray-500 mt-1">
               Manage user email update requests, monitor downstream application acknowledgments, and re-trigger sync for failed systems.

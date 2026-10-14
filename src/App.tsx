@@ -17,6 +17,7 @@ import {
   Eye, 
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Filter,
   Info,
   Edit2,
@@ -2109,29 +2110,58 @@ export default function App() {
             <Settings size={20} className="mr-3 text-[var(--color-accent)]" />
             Configuration
           </button>
-          <button 
-            onClick={() => {
-              setActiveView('audit');
-              setIsMigrationDrawerOpen(false);
-            }} 
-            className={`sidebar-link w-full ${activeView === 'audit' ? 'active' : ''}`}
-          >
-            <History size={20} className="mr-3 text-[var(--color-accent)]" />
-            Audit Log
-          </button>
-          <button 
-            onClick={() => {
-              setActiveView('user-logins');
-              setIsMigrationDrawerOpen(false);
-            }} 
-            className={`sidebar-link w-full ${activeView === 'user-logins' ? 'active' : ''}`}
-          >
-            <Clock size={20} className="mr-3 text-[var(--color-accent)]" />
-            <div className="flex items-center justify-between w-full pr-1">
-              <span>User Login Log</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          {/* Audit Log Menu Group with Submenu */}
+          <div className="space-y-0.5">
+            <button 
+              onClick={() => {
+                setActiveView('audit');
+                setIsMigrationDrawerOpen(false);
+              }} 
+              className={`sidebar-link w-full ${activeView === 'audit' || activeView === 'user-logins' ? 'active' : ''}`}
+            >
+              <History size={20} className="mr-3 text-[var(--color-accent)]" />
+              <div className="flex items-center justify-between w-full pr-1">
+                <span>Audit Log</span>
+                <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${activeView === 'audit' || activeView === 'user-logins' ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+            
+            {/* Sub-menu items indented under Audit Log */}
+            <div className="pl-6 pr-1 py-1 space-y-1 bg-black/15 border-l-2 border-[var(--color-accent)]/40 ml-4 my-1 rounded-r-md">
+              <button
+                onClick={() => {
+                  setActiveView('audit');
+                  setIsMigrationDrawerOpen(false);
+                }}
+                className={`w-full text-xs flex items-center px-2.5 py-1.5 rounded transition-colors cursor-pointer ${
+                  activeView === 'audit' 
+                    ? 'text-white font-bold bg-white/15 shadow-xs' 
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full mr-2 bg-gray-400"></span>
+                Domain &amp; System Audits
+              </button>
+              <button
+                onClick={() => {
+                  setActiveView('user-logins');
+                  setIsMigrationDrawerOpen(false);
+                }}
+                className={`w-full text-xs flex items-center justify-between px-2.5 py-1.5 rounded transition-colors cursor-pointer ${
+                  activeView === 'user-logins' 
+                    ? 'text-white font-bold bg-white/15 shadow-xs' 
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-center">
+                  <Clock size={13} className="mr-2 text-[var(--color-accent)]" />
+                  <span>User Login Log</span>
+                </div>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              </button>
             </div>
-          </button>
+          </div>
+
           <button 
             onClick={() => {
               setActiveView('email-sync');
@@ -2141,7 +2171,7 @@ export default function App() {
           >
             <Mail size={20} className="mr-3 text-[var(--color-accent)]" />
             <div className="flex items-center justify-between w-full pr-1">
-              <span>Email Propagation</span>
+              <span>Email Update Status</span>
               {partiallyFailedEmailCount > 0 ? (
                 <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
                   {partiallyFailedEmailCount}
@@ -2248,7 +2278,7 @@ export default function App() {
               {activeView === 'configuration' && (configSubTab === 'blacklist' ? 'Blocked Domains Management (Blacklist)' : 'Configuration & Governance')}
               {activeView === 'audit' && 'Audit Log'}
               {activeView === 'user-logins' && 'User SSO Login Activity & Last Login Log'}
-              {activeView === 'email-sync' && 'Cross-Application User Email Propagation & Orchestration Hub'}
+              {activeView === 'email-sync' && 'User Email Update Status & Downstream Propagation'}
               {activeView === 'api-health' && 'API Health Check & Status Monitor'}
               {activeView === 'app-secrets' && 'Application Secrets & Expiry Monitor'}
               {activeView === 'traiana-skips' && 'Traiana Legacy App OTP & Skip Counter Support'}
