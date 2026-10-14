@@ -425,6 +425,7 @@ export interface UserEmailSyncRequest {
   id: string;
   initiatingSystem: string;
   ticketReference: string;
+  initiatedByEmail: string;
   userId?: string;
   userName: string;
   oldEmail: string;

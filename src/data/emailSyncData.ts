@@ -7,6 +7,7 @@ export const INITIAL_EMAIL_SYNC_REQUESTS: UserEmailSyncRequest[] = [
     id: 'EML-REQ-2026-901',
     initiatingSystem: 'CRDS (Central Reference Data)',
     ticketReference: 'CRDS-SYNC-84920',
+    initiatedByEmail: 'crds.admin@osttra.com',
     userId: 'USR-OST-9921',
     userName: 'Alex Taylor',
     oldEmail: 'alex.taylor@osttra.com',
@@ -68,6 +69,7 @@ export const INITIAL_EMAIL_SYNC_REQUESTS: UserEmailSyncRequest[] = [
     id: 'EML-REQ-2026-902',
     initiatingSystem: 'Active Directory / Entra ID Federation',
     ticketReference: 'CHG-2026-5512',
+    initiatedByEmail: 'aad.sync.service@jpmorgan.com',
     userId: 'USR-JPM-4412',
     userName: 'Jane Smith',
     oldEmail: 'jane.smith@jpmorgan.com',
@@ -119,6 +121,7 @@ export const INITIAL_EMAIL_SYNC_REQUESTS: UserEmailSyncRequest[] = [
     id: 'EML-REQ-2026-903',
     initiatingSystem: 'Service Management (ServiceNow)',
     ticketReference: 'INC-SSO-77291',
+    initiatedByEmail: 'servicedesk.agent@traiana.com',
     userId: 'USR-TRN-3301',
     userName: 'Sarah Jenkins',
     oldEmail: 'sarah.jenkins@traiana.com',
@@ -169,6 +172,7 @@ export const INITIAL_EMAIL_SYNC_REQUESTS: UserEmailSyncRequest[] = [
     id: 'EML-REQ-2026-904',
     initiatingSystem: 'Workday HCM Webhook',
     ticketReference: 'HR-SYNC-2026-1102',
+    initiatedByEmail: 'workday.integration@citi.com',
     userId: 'USR-CITI-8820',
     userName: 'Robert Jones',
     oldEmail: 'robert.jones@citi.com',
@@ -207,6 +211,7 @@ export const INITIAL_EMAIL_SYNC_REQUESTS: UserEmailSyncRequest[] = [
     id: 'EML-REQ-2026-905',
     initiatingSystem: 'SSO Converge Admin Console',
     ticketReference: 'SSO-ADM-3392',
+    initiatedByEmail: 'ajay.swarnkar@osttra.com',
     userId: 'USR-UBS-5531',
     userName: 'Michael Brown',
     oldEmail: 'michael.brown@ubs.com',
@@ -300,4 +305,75 @@ export const computeOverallStatus = (apps: AppEmailSyncDetail[]): EmailSyncOvera
   if (hasFailed && hasSuccess) return 'PARTIALLY_FAILED';
   if (hasFailed && !hasSuccess) return 'FAILED';
   return 'COMPLETED';
+};
+
+/**
+ * Automatically discovers active downstream application entitlements for any user email.
+ */
+export const discoverUserEntitledApplications = (
+  email: string
+): { name: string; env: 'PROD' | 'UAT'; reason: string }[] => {
+  const normalized = (email || '').trim().toLowerCase();
+  const domain = normalized.includes('@') ? normalized.split('@')[1] : '';
+
+  // 1. Check if user has recorded logins in localStorage
+  try {
+    const savedLogins = localStorage.getItem('sso_central_user_login_logs_v1');
+    if (savedLogins) {
+      const parsed = JSON.parse(savedLogins);
+      if (Array.isArray(parsed)) {
+        const userLogins = parsed.filter(l => l.email && l.email.toLowerCase() === normalized);
+        if (userLogins.length > 0) {
+          const map = new Map<string, { name: string; env: 'PROD' | 'UAT'; reason: string }>();
+          userLogins.forEach(l => {
+            const k = `${l.applicationName}-${l.environment}`;
+            if (!map.has(k)) {
+              map.set(k, {
+                name: l.applicationName,
+                env: l.environment,
+                reason: `Active SSO Session in ${l.environment}`
+              });
+            }
+          });
+          return Array.from(map.values());
+        }
+      }
+    }
+  } catch (e) {
+    // fallback
+  }
+
+  // 2. Domain-based entitlement resolution rules
+  if (domain === 'osttra.com') {
+    return [
+      { name: 'CFD', env: 'PROD', reason: 'Domain Entitlement (Core OSTTRA Participant)' },
+      { name: 'CRDS', env: 'PROD', reason: 'Master Reference Data Service' },
+      { name: 'TradeServ', env: 'PROD', reason: 'Derivatives Processing Network' },
+      { name: 'MarkitWire', env: 'PROD', reason: 'OTC Derivatives Confirmation' },
+      { name: 'CFD', env: 'UAT', reason: 'Staging & Integration Sandbox' }
+    ];
+  }
+
+  if (domain === 'traiana.com') {
+    return [
+      { name: 'Traiana Harmony', env: 'PROD', reason: 'Trade Matching & Settlement' },
+      { name: 'CFD', env: 'PROD', reason: 'Contract for Difference Portal' },
+      { name: 'TradeServ', env: 'PROD', reason: 'Post-Trade Allocation' }
+    ];
+  }
+
+  if (domain.includes('barclays') || domain.includes('citi') || domain.includes('jpmorgan') || domain.includes('ubs') || domain.includes('hsbc')) {
+    return [
+      { name: 'TradeServ', env: 'PROD', reason: 'Tier-1 Clearing & Matching Node' },
+      { name: 'MarkitWire', env: 'PROD', reason: 'Electronic Trade Affirmation' },
+      { name: 'CRDS', env: 'PROD', reason: 'Entity Reference Directory' }
+    ];
+  }
+
+  // Generic / Default
+  return [
+    { name: 'TradeServ', env: 'PROD', reason: 'Standard Client Entitlement' },
+    { name: 'MarkitWire', env: 'PROD', reason: 'Standard Client Entitlement' },
+    { name: 'CRDS', env: 'PROD', reason: 'Reference Directory' }
+  ];
 };

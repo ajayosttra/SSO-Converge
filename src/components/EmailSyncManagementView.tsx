@@ -11,15 +11,14 @@ import {
   Server, 
   Eye, 
   ShieldCheck, 
-  Building2, 
-  Activity, 
   ChevronLeft, 
   ChevronRight,
-  Layers,
   Send,
-  AlertCircle
+  AlertCircle,
+  User,
+  Check
 } from 'lucide-react';
-import { UserEmailSyncRequest, EmailSyncOverallStatus } from '../types';
+import { UserEmailSyncRequest } from '../types';
 import { EmailSyncDetailModal } from './EmailSyncDetailModal';
 import { InitiateEmailSyncModal } from './InitiateEmailSyncModal';
 
@@ -28,15 +27,13 @@ interface EmailSyncManagementViewProps {
   onRetriggerApp: (requestId: string, applicationName: string) => void;
   onRetriggerAllFailed: (requestId: string) => void;
   onInitiateSync: (data: {
-    initiatingSystem: string;
-    ticketReference: string;
-    userName: string;
     oldEmail: string;
     newEmail: string;
     selectedApps: { name: string; env: 'PROD' | 'UAT' }[];
     notes?: string;
   }) => void;
   onNavigateHome?: () => void;
+  currentUserEmail?: string;
 }
 
 export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = ({
@@ -44,7 +41,8 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
   onRetriggerApp,
   onRetriggerAllFailed,
   onInitiateSync,
-  onNavigateHome
+  onNavigateHome,
+  currentUserEmail = 'ajay.swarnkar@osttra.com'
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -70,9 +68,10 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
       const matchesSearch = 
         !q ||
         req.id.toLowerCase().includes(q) ||
-        req.userName.toLowerCase().includes(q) ||
         req.oldEmail.toLowerCase().includes(q) ||
         req.newEmail.toLowerCase().includes(q) ||
+        (req.userName && req.userName.toLowerCase().includes(q)) ||
+        (req.initiatedByEmail && req.initiatedByEmail.toLowerCase().includes(q)) ||
         req.ticketReference.toLowerCase().includes(q) ||
         req.initiatingSystem.toLowerCase().includes(q) ||
         req.applications.some(a => a.applicationName.toLowerCase().includes(q));
@@ -116,10 +115,10 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
   // Export CSV
   const handleExportCSV = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Request ID,Ticket Reference,User Name,Old Email,New Email,Initiating System,Overall Status,SSO Updated,Requested At,Applications Summary\n";
+    csvContent += "Request Id,Old Email,New Email,Initiating system,Initiated by (email id of the initiator),Initiated on (time in UTC),SSO Status,Application status,Overall status\n";
     filteredRequests.forEach(r => {
       const appSummary = r.applications.map(a => `${a.applicationName}(${a.environment}):${a.status}`).join('; ');
-      csvContent += `"${r.id}","${r.ticketReference}","${r.userName}","${r.oldEmail}","${r.newEmail}","${r.initiatingSystem}","${r.overallStatus}","${r.ssoDirectoryUpdated}","${r.requestedAt}","${appSummary}"\n`;
+      csvContent += `"${r.id}","${r.oldEmail}","${r.newEmail}","${r.initiatingSystem}","${r.initiatedByEmail || ''}","${r.requestedAt}","${r.ssoDirectoryUpdated ? 'Updated' : 'Pending'}","${appSummary}","${r.overallStatus}"\n`;
     });
 
     const encodedUri = encodeURI(csvContent);
@@ -147,14 +146,14 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
               {onNavigateHome && <span>/</span>}
               <span className="font-semibold text-gray-700">User Identity Lifecycle</span>
               <span>/</span>
-              <span className="text-[var(--color-primary)] font-bold">Email Sync &amp; Propagation</span>
+              <span className="text-[var(--color-primary)] font-bold">Email Propagation &amp; Sync</span>
             </div>
             <h1 className="text-xl font-extrabold text-gray-900 tracking-tight flex items-center">
               <Mail className="mr-2 text-[var(--color-primary)]" size={24} />
               Cross-Application User Email Propagation Hub
             </h1>
             <p className="text-xs text-gray-500 mt-1">
-              Track email update events sent from user management systems (CRDS, Entra ID, Workday), monitor downstream application acknowledgments, and re-trigger sync for failed systems.
+              Manage user email update requests, monitor downstream application acknowledgments, and re-trigger sync for failed systems.
             </p>
           </div>
 
@@ -200,7 +199,7 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
 
           <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">Action Needed (Failed)</span>
+              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block">Partially Failed (Retrigger)</span>
               <span className="text-2xl font-black text-rose-600">{stats.partiallyFailed}</span>
             </div>
             <div className="w-10 h-10 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
@@ -231,7 +230,7 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
                   setSearchQuery(e.target.value);
                   setCurrentPage(1);
                 }}
-                placeholder="Search by User, Email, Ticket, or Application..."
+                placeholder="Search by Request ID, Old/New Email, Initiator, or App..."
                 className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-300 rounded-lg text-xs outline-none focus:border-[var(--color-accent)] focus:ring-1 focus:ring-[var(--color-accent)]"
               />
               <Search size={14} className="absolute left-3 top-2.5 text-gray-400 pointer-events-none" />
@@ -285,26 +284,28 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
           </div>
         </div>
 
-        {/* Main Data Table */}
+        {/* Main Data Table with Exact Requested Headers */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-[var(--color-table-header-bg)] text-gray-700 font-bold border-b border-gray-200 uppercase tracking-wider text-[11px]">
-                  <th className="px-4 py-3">Request &amp; Ticket</th>
-                  <th className="px-4 py-3">User &amp; Email Update</th>
-                  <th className="px-4 py-3">Initiating System</th>
-                  <th className="px-4 py-3 text-center">SSO Gateway</th>
-                  <th className="px-4 py-3">Downstream Applications Status</th>
-                  <th className="px-4 py-3 text-center">Overall Status</th>
-                  <th className="px-4 py-3">Requested At</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+                  <th className="px-3 py-3 whitespace-nowrap">Request Id</th>
+                  <th className="px-3 py-3 whitespace-nowrap">Old Email</th>
+                  <th className="px-3 py-3 whitespace-nowrap">New Email</th>
+                  <th className="px-3 py-3 whitespace-nowrap">Initiating system</th>
+                  <th className="px-3 py-3 whitespace-nowrap">Initiated by (email id of the initiator)</th>
+                  <th className="px-3 py-3 whitespace-nowrap">Initiated on (time in UTC)</th>
+                  <th className="px-3 py-3 text-center whitespace-nowrap">SSO Status</th>
+                  <th className="px-3 py-3 whitespace-nowrap">Application status</th>
+                  <th className="px-3 py-3 text-center whitespace-nowrap">Overall status</th>
+                  <th className="px-3 py-3 text-right whitespace-nowrap">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
                 {paginatedRequests.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-12 text-gray-400">
+                    <td colSpan={10} className="text-center py-12 text-gray-400">
                       <Mail size={36} className="mx-auto mb-2 text-gray-300" />
                       <p className="font-semibold text-gray-600">No email update requests found</p>
                       <p className="text-[11px] text-gray-400 mt-1">Try adjusting your filters or click "Dispatch Email Update".</p>
@@ -320,46 +321,69 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
                         className="hover:bg-blue-50/40 transition-colors group cursor-pointer"
                         onClick={() => setSelectedRequestForDetail(req)}
                       >
-                        {/* Request ID & Ticket */}
-                        <td className="px-4 py-3">
+                        {/* 1. Request Id */}
+                        <td className="px-3 py-3 whitespace-nowrap">
                           <span className="font-mono font-bold text-gray-900 block">{req.id}</span>
-                          <span className="text-[10px] text-gray-500 font-mono bg-gray-100 px-1.5 py-0.2 rounded border border-gray-200 inline-block mt-0.5">
+                          <span className="text-[10px] text-gray-500 font-mono bg-gray-100 px-1 py-0.2 rounded border border-gray-200 inline-block mt-0.5">
                             {req.ticketReference}
                           </span>
                         </td>
 
-                        {/* User & Email Change */}
-                        <td className="px-4 py-3">
-                          <span className="font-bold text-gray-900 block">{req.userName}</span>
-                          <div className="flex items-center space-x-1.5 mt-0.5 text-[11px]">
-                            <span className="font-mono text-gray-400 line-through truncate max-w-[120px]" title={req.oldEmail}>
+                        {/* 2. Old Email */}
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <div className="flex items-center space-x-1.5">
+                            <span className="font-mono text-gray-700 bg-gray-50 px-2 py-0.5 rounded border border-gray-200 font-medium" title={req.oldEmail}>
                               {req.oldEmail}
                             </span>
-                            <ArrowRight size={11} className="text-gray-400 shrink-0" />
-                            <span className="font-mono font-bold text-emerald-700 truncate max-w-[130px]" title={req.newEmail}>
-                              {req.newEmail}
-                            </span>
                           </div>
+                          {req.userName && (
+                            <span className="text-[10px] text-gray-400 block mt-0.5 truncate max-w-[150px]">{req.userName}</span>
+                          )}
                         </td>
 
-                        {/* Initiating System */}
-                        <td className="px-4 py-3 text-gray-700 text-[11px]">
-                          <span className="font-medium text-gray-800 block truncate max-w-[150px]" title={req.initiatingSystem}>
+                        {/* 3. New Email */}
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <span className="font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block" title={req.newEmail}>
+                            {req.newEmail}
+                          </span>
+                        </td>
+
+                        {/* 4. Initiating system */}
+                        <td className="px-3 py-3 text-gray-700 text-[11px]">
+                          <span className="font-medium text-gray-800 block truncate max-w-[140px]" title={req.initiatingSystem}>
                             {req.initiatingSystem}
                           </span>
                         </td>
 
-                        {/* SSO Core Status */}
-                        <td className="px-4 py-3 text-center">
+                        {/* 5. Initiated by (email id of the initiator) */}
+                        <td className="px-3 py-3 text-[11px] whitespace-nowrap">
+                          <div className="flex items-center space-x-1 text-gray-700 font-mono">
+                            <User size={12} className="text-gray-400 shrink-0" />
+                            <span className="truncate max-w-[160px]" title={req.initiatedByEmail || 'admin.sso@osttra.com'}>
+                              {req.initiatedByEmail || 'admin.sso@osttra.com'}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* 6. Initiated on (time in UTC) */}
+                        <td className="px-3 py-3 text-gray-600 font-mono text-[11px] whitespace-nowrap">
+                          <div className="flex items-center space-x-1">
+                            <Clock size={12} className="text-gray-400 shrink-0" />
+                            <span>{req.requestedAt}</span>
+                          </div>
+                        </td>
+
+                        {/* 7. SSO Status */}
+                        <td className="px-3 py-3 text-center whitespace-nowrap">
                           <span className="inline-flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                            <CheckCircle2 size={11} className="mr-1 text-emerald-600" />
+                            <Check size={11} className="mr-1 text-emerald-600" />
                             Updated
                           </span>
                         </td>
 
-                        {/* Downstream Applications Progress Mini-Chips */}
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1 max-w-sm">
+                        {/* 8. Application status */}
+                        <td className="px-3 py-3">
+                          <div className="flex flex-wrap gap-1 max-w-xs">
                             {req.applications.map(app => (
                               <span 
                                 key={`${app.applicationName}-${app.environment}`}
@@ -367,7 +391,7 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
                                   app.status === 'SUCCESS' 
                                     ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
                                     : app.status === 'FAILED'
-                                    ? 'bg-rose-100 text-rose-800 border-rose-300 font-extrabold'
+                                    ? 'bg-rose-100 text-rose-800 border-rose-300 font-black'
                                     : 'bg-blue-50 text-blue-700 border-blue-200'
                                 }`}
                                 title={`${app.applicationName} (${app.environment}): ${app.status} - ${app.responseMessage || ''}`}
@@ -381,27 +405,22 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
                           </div>
                         </td>
 
-                        {/* Overall Status Badge */}
-                        <td className="px-4 py-3 text-center">
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                        {/* 9. Overall status */}
+                        <td className="px-3 py-3 text-center whitespace-nowrap">
+                          <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
                             req.overallStatus === 'COMPLETED'
                               ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                               : req.overallStatus === 'PARTIALLY_FAILED'
-                              ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                              ? 'bg-rose-100 text-rose-800 border border-rose-300 animate-pulse'
                               : 'bg-blue-100 text-blue-800 border border-blue-300'
                           }`}>
                             {req.overallStatus.replace('_', ' ')}
                           </span>
                         </td>
 
-                        {/* Requested At */}
-                        <td className="px-4 py-3 text-gray-600 font-mono text-[11px] whitespace-nowrap">
-                          {req.requestedAt}
-                        </td>
-
-                        {/* Actions */}
-                        <td className="px-4 py-3 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end space-x-2">
+                        {/* 10. Action */}
+                        <td className="px-3 py-3 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end space-x-1.5">
                             {failedApps.length > 0 && (
                               <button
                                 type="button"
@@ -505,11 +524,12 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
         onRetriggerAllFailed={onRetriggerAllFailed}
       />
 
-      {/* Initiate Modal */}
+      {/* Simplified Initiate Modal with Automatic Entitlement Resolution */}
       <InitiateEmailSyncModal
         isOpen={isInitiateModalOpen}
         onClose={() => setIsInitiateModalOpen(false)}
         onInitiateSync={onInitiateSync}
+        currentUserEmail={currentUserEmail}
       />
     </div>
   );

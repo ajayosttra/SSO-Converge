@@ -151,10 +151,13 @@ export const EmailSyncDetailModal: React.FC<EmailSyncDetailModalProps> = ({
                 <h4 className="text-xs font-bold text-gray-800 truncate" title={request.initiatingSystem}>
                   {request.initiatingSystem}
                 </h4>
+                <p className="text-[11px] text-gray-500 truncate" title={request.initiatedByEmail || 'admin.sso@osttra.com'}>
+                  Initiator: <span className="font-mono text-gray-800 font-semibold">{request.initiatedByEmail || 'admin.sso@osttra.com'}</span>
+                </p>
                 <p className="text-[11px] text-gray-500">
                   Ticket: <code className="bg-gray-100 px-1 py-0.2 rounded font-mono text-[10px]">{request.ticketReference}</code>
                 </p>
-                <span className="text-[10px] text-gray-400 block pt-1">{request.requestedAt}</span>
+                <span className="text-[10px] text-gray-400 block pt-1">Initiated on: {request.requestedAt}</span>
               </div>
 
               {/* Step 2: SSO Gateway Central Directory */}

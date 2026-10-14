@@ -485,9 +485,6 @@ export default function App() {
   };
 
   const handleInitiateEmailSync = (data: {
-    initiatingSystem: string;
-    ticketReference: string;
-    userName: string;
     oldEmail: string;
     newEmail: string;
     selectedApps: { name: string; env: 'PROD' | 'UAT' }[];
@@ -495,18 +492,25 @@ export default function App() {
   }) => {
     const now = formatSyncTimestamp();
     const domain = data.newEmail.split('@')[1] || 'osttra.com';
+    const rawName = data.oldEmail.split('@')[0] || 'User';
+    const userName = rawName.split(/[._-]/).map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+    const initiatorEmail = currentUser?.email || 'ajay.swarnkar@osttra.com';
+    const ticketRef = `SSO-ADM-${Math.floor(1000 + Math.random() * 9000)}`;
+
     const newReq: UserEmailSyncRequest = {
       id: `EML-REQ-${new Date().getUTCFullYear()}-${Date.now().toString().slice(-4)}`,
-      initiatingSystem: data.initiatingSystem,
-      ticketReference: data.ticketReference,
-      userName: data.userName,
+      initiatingSystem: 'SSO Converge Admin Console',
+      ticketReference: ticketRef,
+      initiatedByEmail: initiatorEmail,
+      userName,
       oldEmail: data.oldEmail,
       newEmail: data.newEmail,
       domain,
       requestedAt: now,
+      completedAt: now,
       ssoDirectoryUpdated: true,
       retryCount: 0,
-      notes: data.notes,
+      notes: data.notes || `Email update triggered from Converge app by ${initiatorEmail}`,
       applications: data.selectedApps.map(a => ({
         applicationName: a.name,
         environment: a.env,
@@ -522,7 +526,21 @@ export default function App() {
     };
 
     setEmailSyncRequests(prev => [newReq, ...prev]);
-    showMessage(`Dispatched email update for ${data.userName} (${data.oldEmail} -> ${data.newEmail}) across ${data.selectedApps.length} applications.`, 'success');
+
+    // Update login records if user previously had entries with oldEmail
+    setSsoLoginRecords(prev => prev.map(rec => {
+      if (rec.email.toLowerCase() === data.oldEmail.toLowerCase()) {
+        return {
+          ...rec,
+          email: data.newEmail,
+          domain,
+          displayName: userName
+        };
+      }
+      return rec;
+    }));
+
+    showMessage(`Dispatched email update for ${userName} (${data.oldEmail} -> ${data.newEmail}) across ${data.selectedApps.length} applications based on active entitlements.`, 'success');
   };
 
   // API Health Check State
@@ -2788,6 +2806,7 @@ export default function App() {
               onRetriggerAllFailed={handleRetriggerAllFailedSync}
               onInitiateSync={handleInitiateEmailSync}
               onNavigateHome={() => setActiveView('blotter')}
+              currentUserEmail={currentUser?.email || 'ajay.swarnkar@osttra.com'}
             />
           )}
 
