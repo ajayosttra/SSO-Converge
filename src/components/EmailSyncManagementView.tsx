@@ -115,7 +115,7 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
   // Export CSV
   const handleExportCSV = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Request Id,Old Email,New Email,Initiating system,Initiated by (email id of the initiator),Initiated on (time in UTC),SSO Status,Application status,Overall status\n";
+    csvContent += "Request Id,Old Email,New Email,Initiating system,Initiated by,Initiated on,SSO Status,Application status,Overall status\n";
     filteredRequests.forEach(r => {
       const appSummary = r.applications.map(a => `${a.applicationName}(${a.environment}):${a.status}`).join('; ');
       csvContent += `"${r.id}","${r.oldEmail}","${r.newEmail}","${r.initiatingSystem}","${r.initiatedByEmail || ''}","${r.requestedAt}","${r.ssoDirectoryUpdated ? 'Updated' : 'Pending'}","${appSummary}","${r.overallStatus}"\n`;
@@ -294,8 +294,8 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
                   <th className="px-3 py-3 whitespace-nowrap">Old Email</th>
                   <th className="px-3 py-3 whitespace-nowrap">New Email</th>
                   <th className="px-3 py-3 whitespace-nowrap">Initiating system</th>
-                  <th className="px-3 py-3 whitespace-nowrap">Initiated by (email id of the initiator)</th>
-                  <th className="px-3 py-3 whitespace-nowrap">Initiated on (time in UTC)</th>
+                  <th className="px-3 py-3 whitespace-nowrap">Initiated by</th>
+                  <th className="px-3 py-3 whitespace-nowrap">Initiated on</th>
                   <th className="px-3 py-3 text-center whitespace-nowrap">SSO Status</th>
                   <th className="px-3 py-3 whitespace-nowrap">Application status</th>
                   <th className="px-3 py-3 text-center whitespace-nowrap">Overall status</th>
@@ -355,7 +355,7 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
                           </span>
                         </td>
 
-                        {/* 5. Initiated by (email id of the initiator) */}
+                        {/* 5. Initiated by */}
                         <td className="px-3 py-3 text-[11px] whitespace-nowrap">
                           <div className="flex items-center space-x-1 text-gray-700 font-mono">
                             <User size={12} className="text-gray-400 shrink-0" />
@@ -365,7 +365,7 @@ export const EmailSyncManagementView: React.FC<EmailSyncManagementViewProps> = (
                           </div>
                         </td>
 
-                        {/* 6. Initiated on (time in UTC) */}
+                        {/* 6. Initiated on */}
                         <td className="px-3 py-3 text-gray-600 font-mono text-[11px] whitespace-nowrap">
                           <div className="flex items-center space-x-1">
                             <Clock size={12} className="text-gray-400 shrink-0" />
