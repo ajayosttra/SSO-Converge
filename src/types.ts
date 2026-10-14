@@ -403,3 +403,42 @@ export interface UserAppLoginSummary {
   lastStatus: SsoLoginStatus;
 }
 
+// --- Cross-Application User Email Propagation & Orchestration Types ---
+
+export type EmailSyncOverallStatus = 'COMPLETED' | 'PARTIALLY_FAILED' | 'IN_PROGRESS' | 'FAILED';
+export type AppSyncStatus = 'SUCCESS' | 'IN_PROGRESS' | 'FAILED' | 'SKIPPED';
+
+export interface AppEmailSyncDetail {
+  applicationName: string;
+  environment: 'PROD' | 'UAT';
+  status: AppSyncStatus;
+  attemptCount: number;
+  lastAttemptTimestamp: string;
+  acknowledgedTimestamp?: string;
+  responseCode?: number;
+  responseMessage?: string;
+  failureReason?: string;
+  payloadTraceId?: string;
+}
+
+export interface UserEmailSyncRequest {
+  id: string;
+  initiatingSystem: string;
+  ticketReference: string;
+  userId?: string;
+  userName: string;
+  oldEmail: string;
+  newEmail: string;
+  domain: string;
+  requestedAt: string;
+  completedAt?: string;
+  overallStatus: EmailSyncOverallStatus;
+  ssoDirectoryUpdated: boolean;
+  applications: AppEmailSyncDetail[];
+  retryCount: number;
+  lastRetriggeredAt?: string;
+  retriggeredBy?: string;
+  notes?: string;
+}
+
+

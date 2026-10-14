@@ -38,16 +38,18 @@ import {
   RotateCcw,
   Smartphone,
   Clock,
-  LogIn
+  LogIn,
+  Mail
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Domain, PendingRequest, User, OperationName, OperationType, Application, DomainUser, AuditRecord, UserAuditRecord, BlacklistedDomain, SamlMetadataConfig, ApiEndpointHealth, ApiProbeLog, AppSecret, TraianaUserSkipRecord, TraianaSkipAuditRecord, UserMfaRecord, MfaResetAuditRecord, SsoUserLoginRecord, UserAppLoginSummary, SsoAuthProtocol } from './types';
+import { Domain, PendingRequest, User, OperationName, OperationType, Application, DomainUser, AuditRecord, UserAuditRecord, BlacklistedDomain, SamlMetadataConfig, ApiEndpointHealth, ApiProbeLog, AppSecret, TraianaUserSkipRecord, TraianaSkipAuditRecord, UserMfaRecord, MfaResetAuditRecord, SsoUserLoginRecord, UserAppLoginSummary, SsoAuthProtocol, UserEmailSyncRequest, AppEmailSyncDetail, EmailSyncOverallStatus } from './types';
 import { INITIAL_DOMAIN_DATA, INITIAL_PENDING_REQUESTS, INITIAL_AUDIT_LOGS, INITIAL_USER_AUDIT_LOGS, AZURE_WHITELISTED_DOMAINS, DEFAULT_PASSWORD, INITIAL_BLACKLISTED_DOMAINS, checkIsDomainBlocked, INITIAL_SAML_CONFIGS, generateSamlUuid, buildOsttraSamlMetadataUrl } from './constants';
 import { INITIAL_API_ENDPOINTS, INITIAL_PROBE_LOGS } from './data/apiHealthData';
 import { getInitialAppSecrets } from './data/appSecretsData';
 import { getInitialTraianaUsers, saveTraianaUsers, getInitialTraianaAuditLogs, saveTraianaAuditLogs } from './data/traianaSkipData';
 import { getInitialMfaUsers, saveMfaUsers, getInitialMfaAuditLogs, saveMfaAuditLogs } from './data/mfaResetData';
 import { getInitialSsoLoginRecords, saveSsoLoginRecords, createSsoLoginRecord } from './data/userLoginData';
+import { getInitialEmailSyncRequests, saveEmailSyncRequests, formatSyncTimestamp, computeOverallStatus } from './data/emailSyncData';
 import { AuditLogModal } from './components/AuditLogModal';
 import { AuditLogsView } from './components/AuditLogsView';
 import { BlockedDomainsBlotter } from './components/BlockedDomainsBlotter';
@@ -57,6 +59,7 @@ import { AppSecretsView } from './components/AppSecretsView';
 import { TraianaSkipCounterView } from './components/TraianaSkipCounterView';
 import { MfaResetManagementView } from './components/MfaResetManagementView';
 import { UserLoginLogView } from './components/UserLoginLogView';
+import { EmailSyncManagementView } from './components/EmailSyncManagementView';
 
 // --- Helper Functions ---
 const getFormattedDate = () => {
@@ -381,7 +384,7 @@ const StatusBadge = ({ status }: { status: string }) => {
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [activeView, setActiveView] = useState<'blotter' | 'pending' | 'migration' | 'configuration' | 'audit' | 'user-logins' | 'api-health' | 'app-secrets' | 'traiana-skips' | 'mfa-reset'>('blotter');
+  const [activeView, setActiveView] = useState<'blotter' | 'pending' | 'migration' | 'configuration' | 'audit' | 'user-logins' | 'email-sync' | 'api-health' | 'app-secrets' | 'traiana-skips' | 'mfa-reset'>('blotter');
   const [blotterTab, setBlotterTab] = useState<'registered' | 'blocked' | 'saml'>('registered');
   const [samlConfigs, setSamlConfigs] = useState<SamlMetadataConfig[]>(INITIAL_SAML_CONFIGS);
   const [domainData, setDomainData] = useState<Domain[]>(INITIAL_DOMAIN_DATA);
@@ -411,6 +414,115 @@ export default function App() {
     const newRecord = createSsoLoginRecord(data);
     setSsoLoginRecords(prev => [newRecord, ...prev]);
     showMessage(`SSO Login successfully recorded for ${data.email} to ${data.applicationName} (${data.environment}).`, 'success');
+  };
+
+  // Cross-Application User Email Propagation State
+  const [emailSyncRequests, setEmailSyncRequests] = useState<UserEmailSyncRequest[]>(getInitialEmailSyncRequests);
+
+  useEffect(() => {
+    saveEmailSyncRequests(emailSyncRequests);
+  }, [emailSyncRequests]);
+
+  const partiallyFailedEmailCount = useMemo(() => 
+    emailSyncRequests.filter(r => r.overallStatus === 'PARTIALLY_FAILED').length, 
+    [emailSyncRequests]
+  );
+
+  const handleRetriggerAppSync = (requestId: string, applicationName: string) => {
+    setEmailSyncRequests(prev => prev.map(req => {
+      if (req.id !== requestId) return req;
+      const updatedApps = req.applications.map(app => {
+        if (app.applicationName !== applicationName) return app;
+        return {
+          ...app,
+          status: 'SUCCESS' as const,
+          attemptCount: app.attemptCount + 1,
+          lastAttemptTimestamp: formatSyncTimestamp(),
+          acknowledgedTimestamp: formatSyncTimestamp(),
+          responseCode: 200,
+          responseMessage: `Manual re-trigger successful: Email updated in ${applicationName} repository.`,
+          failureReason: undefined
+        };
+      });
+      return {
+        ...req,
+        applications: updatedApps,
+        overallStatus: computeOverallStatus(updatedApps),
+        retryCount: req.retryCount + 1,
+        lastRetriggeredAt: formatSyncTimestamp(),
+        retriggeredBy: currentUser?.displayName || 'Admin Operator'
+      };
+    }));
+    showMessage(`Re-triggered email update for ${applicationName}. Acknowledgment received (200 OK).`, 'success');
+  };
+
+  const handleRetriggerAllFailedSync = (requestId: string) => {
+    setEmailSyncRequests(prev => prev.map(req => {
+      if (req.id !== requestId) return req;
+      const updatedApps = req.applications.map(app => {
+        if (app.status !== 'FAILED') return app;
+        return {
+          ...app,
+          status: 'SUCCESS' as const,
+          attemptCount: app.attemptCount + 1,
+          lastAttemptTimestamp: formatSyncTimestamp(),
+          acknowledgedTimestamp: formatSyncTimestamp(),
+          responseCode: 200,
+          responseMessage: `Re-triggered downstream delivery: Synchronized successfully in ${app.applicationName}.`,
+          failureReason: undefined
+        };
+      });
+      return {
+        ...req,
+        applications: updatedApps,
+        overallStatus: computeOverallStatus(updatedApps),
+        retryCount: req.retryCount + 1,
+        lastRetriggeredAt: formatSyncTimestamp(),
+        retriggeredBy: currentUser?.displayName || 'Admin Operator'
+      };
+    }));
+    showMessage(`Batch re-trigger completed. All downstream application acknowledgments confirmed.`, 'success');
+  };
+
+  const handleInitiateEmailSync = (data: {
+    initiatingSystem: string;
+    ticketReference: string;
+    userName: string;
+    oldEmail: string;
+    newEmail: string;
+    selectedApps: { name: string; env: 'PROD' | 'UAT' }[];
+    notes?: string;
+  }) => {
+    const now = formatSyncTimestamp();
+    const domain = data.newEmail.split('@')[1] || 'osttra.com';
+    const newReq: UserEmailSyncRequest = {
+      id: `EML-REQ-${new Date().getUTCFullYear()}-${Date.now().toString().slice(-4)}`,
+      initiatingSystem: data.initiatingSystem,
+      ticketReference: data.ticketReference,
+      userName: data.userName,
+      oldEmail: data.oldEmail,
+      newEmail: data.newEmail,
+      domain,
+      requestedAt: now,
+      ssoDirectoryUpdated: true,
+      retryCount: 0,
+      notes: data.notes,
+      applications: data.selectedApps.map(a => ({
+        applicationName: a.name,
+        environment: a.env,
+        status: 'SUCCESS' as const,
+        attemptCount: 1,
+        lastAttemptTimestamp: now,
+        acknowledgedTimestamp: now,
+        responseCode: 200,
+        responseMessage: `Email successfully updated in ${a.name} database.`,
+        payloadTraceId: `TRC-${a.name.substring(0, 3).toUpperCase()}-${Date.now().toString().slice(-6)}`
+      })),
+      overallStatus: 'COMPLETED'
+    };
+
+    setEmailSyncRequests(prev => [newReq, ...prev]);
+    showMessage(`Dispatched email update for ${data.userName} (${data.oldEmail} -> ${data.newEmail}) across ${data.selectedApps.length} applications.`, 'success');
   };
 
   // API Health Check State
@@ -2004,6 +2116,25 @@ export default function App() {
           </button>
           <button 
             onClick={() => {
+              setActiveView('email-sync');
+              setIsMigrationDrawerOpen(false);
+            }} 
+            className={`sidebar-link w-full ${activeView === 'email-sync' ? 'active' : ''}`}
+          >
+            <Mail size={20} className="mr-3 text-[var(--color-accent)]" />
+            <div className="flex items-center justify-between w-full pr-1">
+              <span>Email Propagation</span>
+              {partiallyFailedEmailCount > 0 ? (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+                  {partiallyFailedEmailCount}
+                </span>
+              ) : (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              )}
+            </div>
+          </button>
+          <button 
+            onClick={() => {
               setActiveView('api-health');
               setIsMigrationDrawerOpen(false);
             }} 
@@ -2099,6 +2230,7 @@ export default function App() {
               {activeView === 'configuration' && (configSubTab === 'blacklist' ? 'Blocked Domains Management (Blacklist)' : 'Configuration & Governance')}
               {activeView === 'audit' && 'Audit Log'}
               {activeView === 'user-logins' && 'User SSO Login Activity & Last Login Log'}
+              {activeView === 'email-sync' && 'Cross-Application User Email Propagation & Orchestration Hub'}
               {activeView === 'api-health' && 'API Health Check & Status Monitor'}
               {activeView === 'app-secrets' && 'Application Secrets & Expiry Monitor'}
               {activeView === 'traiana-skips' && 'Traiana Legacy App OTP & Skip Counter Support'}
@@ -2645,6 +2777,16 @@ export default function App() {
             <UserLoginLogView
               loginRecords={ssoLoginRecords}
               onRecordLogin={handleRecordSsoLogin}
+              onNavigateHome={() => setActiveView('blotter')}
+            />
+          )}
+
+          {activeView === 'email-sync' && (
+            <EmailSyncManagementView
+              requests={emailSyncRequests}
+              onRetriggerApp={handleRetriggerAppSync}
+              onRetriggerAllFailed={handleRetriggerAllFailedSync}
+              onInitiateSync={handleInitiateEmailSync}
               onNavigateHome={() => setActiveView('blotter')}
             />
           )}
